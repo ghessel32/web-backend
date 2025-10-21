@@ -90,7 +90,7 @@ app.post("/api/broken-links", async (req, res) => {
   res.json(result);
 });
 
-const PORT = 3001;
+
 app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+  console.log(`Backend running on http://localhost:${process.env.PORT}`);
 });
