@@ -31,9 +31,7 @@ app.post("/api/add-website", async (req, res) => {
 
 app.post("/api/add-user", async (req, res) => {
   const { email, name } = req.body;
-  console.log(email, name);
-
-  const result = await addOrUpdateUser(name, email);
+   const result = await addOrUpdateUser(name, email);
   res.json(result);
 });
 
@@ -90,7 +88,7 @@ app.post("/api/broken-links", async (req, res) => {
   res.json(result);
 });
 
-PORT = process.env.PORT
+PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
 });
