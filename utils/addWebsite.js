@@ -9,15 +9,13 @@ export const addOrUpdateWebsite = async (name, url) => {
       .upsert(
         { name, url },
         { onConflict: "url", returning: "representation" }
-      );
+      ).select();
 
     if (error) {
       console.error("Supabase upsert error:", error);
       return null;
     }
-    console.log(data);
-
-    return data[0]; // return the inserted/updated row
+    return data[0]; 
   } catch (err) {
     console.error("Unexpected error:", err);
     return null;
