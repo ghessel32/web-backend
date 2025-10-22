@@ -88,7 +88,7 @@ app.post("/api/broken-links", async (req, res) => {
   res.json(result);
 });
 
-PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
 });
