@@ -9,7 +9,7 @@ import { checkUrlSafety } from "./utils/Threat.js";
 import { checkBrokenLinks } from "./utils/brokenLink.js";
 import { fetchSEOData } from "./utils/seo.js";
 import { getSpeedPerformance } from "./utils/speed.js";
-import { checkPageHandler } from "./utils/check-page.js";
+import { checkPageExists } from "./utils/check-page.js";
 import { addOrUpdateWebsite } from "./utils/addWebsite.js";
 import { addOrUpdateUser } from "./utils/addUser.js";
 
@@ -21,7 +21,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.post("/api/check-page", checkPageHandler);
+app.post("/api/check-page", async (req, res) => {
+  try {
+    const { url } = req.body;
+    const result = await checkPageExists(url);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 app.post("/api/add-website", async (req, res) => {
   const { name, url } = req.body;
