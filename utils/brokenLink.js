@@ -11,10 +11,15 @@ export async function checkBrokenLinks(url) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   });
 
-  // Filter out only the broken URLs
-  const brokenUrls = result.links
+  const allLinks = result.links || [];
+
+  const brokenUrls = allLinks
     .filter((link) => link.state === "BROKEN")
     .map((link) => link.url);
 
-  return { count: brokenUrls.length, links: brokenUrls };
+  return {
+    totalLinks: allLinks.length,
+    brokenLinks: brokenUrls.length,
+    links: brokenUrls,
+  };
 }

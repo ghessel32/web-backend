@@ -1,25 +1,35 @@
 import { supabase } from "./client.js";
 
-export const addOrUpdateWebsite = async (name, url) => {
-  if (!name || !url) return null;
+export const addOrUpdateWebsite = async (name, url, score) => {
+  if (!name || !url) return { msg: "Missing name or url" };
 
   try {
     const { data, error } = await supabase
-      .from("websites")
+      .from("web-leader")
       .upsert(
-        { name, url },
-        { onConflict: "url", returning: "representation" }
-      );
+        { name, url, score },
+        {
+          onConflict: "url",
+          returning: "representation",
+        }
+      )
+      .select();
 
     if (error) {
       console.error("Supabase upsert error:", error);
-      return null;
+      return { msg: "Database error" };
     }
-    console.log(data);
 
-    return data[0]; // return the inserted/updated row
+    if (data && data.length > 0) {
+      const isNew = data[0]?.created_at === data[0]?.updated_at;
+      return {
+        msg: isNew ? "Website stored" : "Website updated",
+      };
+    }
+
+    return { msg: "No data returned" };
   } catch (err) {
-    console.error("Unexpected error:", err);
-    return null;
+    console.error("Unexpected error in addOrUpdateWebsite:", err);
+    return { msg: "Unexpected error" };
   }
 };

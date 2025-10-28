@@ -1,10 +1,9 @@
-
 import axios from "axios";
 
-const API_KEY = process.env.THREAT_API;
-const API_URL = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${API_KEY}`;
-
 export async function checkUrlSafety(urlToCheck) {
+  const API_KEY = process.env.THREAT_API;
+  const API_URL = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${API_KEY}`;
+
   const body = {
     client: {
       clientId: "webvytal",

@@ -1,6 +1,5 @@
 import fetch from "node-fetch";
 
-
 export const getSpeedPerformance = async (url) => {
   try {
     const apiKey = process.env.SPEED_API;
@@ -47,7 +46,14 @@ export const getSpeedPerformance = async (url) => {
           audits["cumulative-layout-shift"]?.score
         ),
       };
-      return metrics;
+
+      // Extract numeric values for LCP and TBT (in milliseconds)
+      const numericValues = {
+        LCP: audits["largest-contentful-paint"]?.numericValue || 0,
+        TBT: audits["total-blocking-time"]?.numericValue || 0,
+      };
+
+      return { metrics, numericValues };
     };
 
     // -------------------------
@@ -100,7 +106,6 @@ export const getSpeedPerformance = async (url) => {
         }
       }
 
-  
       // 3. THIRD-PARTY CODE (Uses "-insight" suffix)
       if (auditFailed("third-parties-insight")) {
         const thirdParty = audits["third-parties-insight"];
@@ -139,7 +144,6 @@ export const getSpeedPerformance = async (url) => {
         );
       }
 
-      
       return issues.length ? issues : null;
     };
 
@@ -154,9 +158,19 @@ export const getSpeedPerformance = async (url) => {
       mobile: extractIssues(mobileData?.lighthouseResult?.audits),
     };
 
-
-
-    return { success: true, labData, issuesData };
+    // ✅ Proper return
+    return {
+      success: true,
+      labData: {
+        desktop: labData.desktop.metrics,
+        mobile: labData.mobile.metrics,
+      },
+      cwv: {
+        desktop: labData.desktop.numericValues,
+        mobile: labData.mobile.numericValues,
+      },
+      issuesData,
+    };
   } catch (err) {
     console.error("Speed API error:", err);
     return { success: false, message: "Failed to fetch performance data" };
