@@ -1,6 +1,7 @@
 import { whoisDomain } from "whoiser";
 import fetch from "node-fetch";
 
+// === Utility Helpers ===
 function extractRootDomain(input) {
   if (!input) return "";
   let domain = input.replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
@@ -9,58 +10,59 @@ function extractRootDomain(input) {
   return domain;
 }
 
-
 function getDaysLeft(expiryDate) {
   if (!expiryDate) return 0;
   const expiry = new Date(expiryDate);
   if (isNaN(expiry)) return 0;
-  const diffTime = expiry - new Date();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays > 0 ? diffDays : 0;
+  const diff = expiry - new Date();
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return days > 0 ? days : 0;
 }
-
 
 function formatDate(dateString) {
   if (!dateString) return "N/A";
-  const date = new Date(dateString);
-  if (isNaN(date)) return "N/A";
-  return date.toLocaleDateString("en-US", {
+  const d = new Date(dateString);
+  if (isNaN(d)) return "N/A";
+  return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
 }
 
+function parseProtectionStatus(status) {
+  if (!status) return { serverProtected: false };
+  const str = Array.isArray(status)
+    ? status.join(" ").toLowerCase()
+    : status.toLowerCase();
 
-function parseProtectionStatus(domainStatus) {
-  if (!domainStatus) return { serverProtected: false };
-  const statusString = Array.isArray(domainStatus)
-    ? domainStatus.join(" ").toLowerCase()
-    : domainStatus.toLowerCase();
+  const protectedStatus =
+    str.includes("prohibited") ||
+    str.includes("clientupdateprohibited") ||
+    str.includes("serverupdateprohibited") ||
+    str.includes("servertransferprohibited");
 
-  const serverProtected =
-    statusString.includes("serverupdateprohibited") ||
-    statusString.includes("servertransferprohibited") ||
-    statusString.includes("serverdeleteprohibited") ||
-    statusString.includes("client update prohibited") ||
-    statusString.includes("client transfer prohibited");
-
-  return { serverProtected };
+  return { serverProtected: protectedStatus };
 }
 
-
+// === RDAP Fallback ===
 async function getRdapInfo(domain) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+
   try {
-    const response = await fetch(`https://rdap.org/domain/${domain}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
+    const res = await fetch(`https://rdap.org/domain/${domain}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
 
-    const expiryEvent = data.events?.find(e => e.eventAction === "expiration");
-    const status = data.status || [];
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
 
+    const expiryEvent = data.events?.find((e) => e.eventAction === "expiration");
     return {
       expiryDate: expiryEvent?.eventDate || null,
-      domainStatus: status,
+      domainStatus: data.status || [],
     };
   } catch (err) {
     console.warn(`RDAP lookup failed for ${domain}:`, err.message);
@@ -68,21 +70,55 @@ async function getRdapInfo(domain) {
   }
 }
 
+// === WHOISXML API (Final Fallback) ===
+async function getWhoisXmlApi(domain) {
+  const apiKey = process.env.WHOISXML_KEY; // store securely
+  if (!apiKey) return {};
 
+  const url = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=${apiKey}&domainName=${domain}&outputFormat=JSON`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const record = data?.WhoisRecord || {};
+    const registry = record.registryData || {};
+
+    const expiryDate =
+      record.expiresDateNormalized ||
+      registry.expiresDate ||
+      registry.expiresDateNormalized ||
+      record.expiresDate ||
+      null;
+
+    const status =
+      record.status ||
+      registry.status ||
+      [];
+
+    return { expiryDate, domainStatus: status };
+  } catch (err) {
+    console.warn(`WhoisXMLAPI failed for ${domain}:`, err.message);
+    return {};
+  }
+}
+
+// === Main Entry ===
 export async function getDomainInfo(domain) {
   try {
-    const rootDomain = extractRootDomain(domain);
-    if (!rootDomain) throw new Error("Invalid domain");
+    const root = extractRootDomain(domain);
+    if (!root) throw new Error("Invalid domain");
 
     let expiryDate = null;
     let domainStatus = null;
 
-    // Try WHOIS first
+    // 1️⃣ Try WHOIS
     try {
-      const data = await whoisDomain(rootDomain, { follow: 2, timeout: 10000 });
+      const data = await whoisDomain(root, { follow: 2, timeout: 8000 });
       const whoisData =
         data["whois.verisign-grs.com"] ||
-        Object.values(data).find((obj) => obj && Object.keys(obj).length > 3) ||
+        Object.values(data).find((o) => o && Object.keys(o).length > 3) ||
         {};
 
       expiryDate =
@@ -98,17 +134,23 @@ export async function getDomainInfo(domain) {
         whoisData["Domain Status"] ||
         whoisData.domainStatus ||
         whoisData.status ||
-        whoisData.Status ||
-        "";
+        whoisData.Status;
     } catch (err) {
-      console.warn(`WHOIS lookup failed for ${rootDomain}:`, err.message);
+      console.warn(`WHOIS failed for ${root}:`, err.message);
     }
 
-    // Fallback to RDAP if WHOIS is missing expiry
+    // 2️⃣ Fallback: RDAP
     if (!expiryDate) {
-      const rdapData = await getRdapInfo(rootDomain);
-      if (rdapData.expiryDate) expiryDate = rdapData.expiryDate;
-      if (rdapData.domainStatus) domainStatus = rdapData.domainStatus;
+      const rdap = await getRdapInfo(root);
+      expiryDate = rdap.expiryDate || expiryDate;
+      domainStatus = rdap.domainStatus || domainStatus;
+    }
+
+    // 3️⃣ Fallback: WHOISXML API
+    if (!expiryDate) {
+      const api = await getWhoisXmlApi(root);
+      expiryDate = api.expiryDate || expiryDate;
+      domainStatus = api.domainStatus || domainStatus;
     }
 
     const daysLeft = getDaysLeft(expiryDate);
@@ -119,8 +161,8 @@ export async function getDomainInfo(domain) {
       daysLeft,
       isProtected: protection.serverProtected,
     };
-  } catch (error) {
-    console.error("Error fetching domain info:", error);
-    throw new Error("Failed to fetch domain WHOIS/RDAP info");
+  } catch (err) {
+    console.error("Error fetching domain info:", err.message);
+    return { expiryDate: "N/A", daysLeft: 0, isProtected: false };
   }
 }

@@ -1,9 +1,22 @@
 import * as cheerio from "cheerio";
 import fetch from "node-fetch";
+import puppeteer from "puppeteer";
+
+let browser; // persistent browser instance
+
+async function getBrowser() {
+  if (!browser) {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+  }
+  return browser;
+}
 
 export async function fetchSEOData(url) {
   try {
-    // Fetch the page with realistic headers
+    // Step 1: Lightweight Fetch
     const res = await fetch(url, {
       headers: {
         "User-Agent":
@@ -11,101 +24,73 @@ export async function fetchSEOData(url) {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
+      timeout: 8000,
     });
-
-    if (!res.ok) throw new Error(`Failed to fetch URL (status: ${res.status})`);
 
     const html = await res.text();
 
-    // Detect bot protection / blocked pages
-    const botBlocked =
-      html.includes("Cloudflare") ||
-      html.includes("Access denied") ||
-      html.includes("Checking your browser") ||
-      html.length < 100;
-
-    if (botBlocked) {
-      return {
-        blocked: true,
-        message:
-          "SEO data could not be fetched — this site uses a protection layer that blocks automated requests.",
-      };
+    if (!res.ok || html.length < 200 || /cloudflare|access denied|checking your browser/i.test(html)) {
+      throw new Error("Blocked or incomplete content");
     }
 
-    // Load HTML into Cheerio
-    const $ = cheerio.load(html);
+    return parseSEO(html, url);
+  } catch (fetchErr) {
+    console.warn(`[SEO] Fetch failed for ${url}: ${fetchErr.message}. Using Puppeteer fallback...`);
 
-    // Extract basic SEO fields
-    const title = $("title").text() || null;
-    const metaDescription = $('meta[name="description"]').attr("content") || null;
-    const h1 = $("h1").first().text() || null;
-    const robots = $("meta[name='robots']").attr("content") || null;
-    const sitemap =
-      $("link[rel='sitemap']").attr("href") || `${url.replace(/\/$/, "")}/sitemap.xml`;
-    const canonical = $("link[rel='canonical']").attr("href") || null;
+    try {
+      // Step 2: Puppeteer Fallback (Browser Simulation)
+      const browser = await getBrowser();
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      );
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+      const html = await page.content();
+      await page.close();
 
-    // Extract Open Graph tags
-    const ogTags = {};
-    $('meta[property^="og:"]').each((i, elem) => {
-      const property = $(elem).attr("property");
-      const content = $(elem).attr("content");
-      if (property && content) {
-        // Remove 'og:' prefix for cleaner keys
-        const key = property.replace("og:", "");
-        ogTags[key] = content;
-      }
-    });
-
-    // Extract Twitter Card tags (check both name and property attributes)
-    const twitterTags = {};
-    
-    // Check meta tags with name="twitter:*"
-    $('meta[name^="twitter:"]').each((i, elem) => {
-      const name = $(elem).attr("name");
-      const content = $(elem).attr("content");
-      if (name && content) {
-        const key = name.replace("twitter:", "");
-        twitterTags[key] = content;
-      }
-    });
-    
-    // Also check meta tags with property="twitter:*" (some sites use this)
-    $('meta[property^="twitter:"]').each((i, elem) => {
-      const property = $(elem).attr("property");
-      const content = $(elem).attr("content");
-      if (property && content) {
-        const key = property.replace("twitter:", "");
-        // Don't overwrite if already found via name attribute
-        if (!twitterTags[key]) {
-          twitterTags[key] = content;
-        }
-      }
-    });
-
-    // Return all fields
-    return {
-      blocked: false,
-      title,
-      metaDescription,
-      h1,
-      robots,
-      sitemap,
-      canonical,
-      mobileFriendly: true, // default assumption; can extend later
-      openGraph: {
-        present: Object.keys(ogTags).length > 0,
-        tags: ogTags,
-      },
-      twitter: {
-        present: Object.keys(twitterTags).length > 0,
-        tags: twitterTags,
-      },
-    };
-  } catch (error) {
-    console.error(`SEO fetch error for ${url}:`, error.message);
-    return {
-      blocked: true,
-      message: "SEO data could not be fetched due to a network or server error.",
-    };
+      return parseSEO(html, url);
+    } catch (puppeteerErr) {
+      console.error(`[SEO] Puppeteer failed for ${url}: ${puppeteerErr.message}`);
+      return {
+        blocked: true,
+        message: "SEO data could not be fetched — site uses strong protection.",
+      };
+    }
   }
+}
+
+// Parse HTML and extract SEO fields
+function parseSEO(html, url) {
+  const $ = cheerio.load(html);
+  const title = $("title").text() || null;
+  const metaDescription = $('meta[name="description"]').attr("content") || null;
+  const h1 = $("h1").first().text() || null;
+  const robots = $("meta[name='robots']").attr("content") || null;
+  const canonical = $("link[rel='canonical']").attr("href") || null;
+  const sitemap = $("link[rel='sitemap']").attr("href") || `${url.replace(/\/$/, "")}/sitemap.xml`;
+
+  const ogTags = {};
+  $('meta[property^="og:"]').each((_, el) => {
+    const p = $(el).attr("property"), c = $(el).attr("content");
+    if (p && c) ogTags[p.replace("og:", "")] = c;
+  });
+
+  const twitterTags = {};
+  $('meta[name^="twitter:"], meta[property^="twitter:"]').each((_, el) => {
+    const key = ($(el).attr("name") || $(el).attr("property")).replace("twitter:", "");
+    const val = $(el).attr("content");
+    if (key && val) twitterTags[key] = val;
+  });
+
+  return {
+    blocked: false,
+    title,
+    metaDescription,
+    h1,
+    robots,
+    canonical,
+    sitemap,
+    openGraph: { present: !!Object.keys(ogTags).length, tags: ogTags },
+    twitter: { present: !!Object.keys(twitterTags).length, tags: twitterTags },
+  };
 }

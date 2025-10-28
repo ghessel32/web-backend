@@ -21,6 +21,7 @@
     "express": "^5.1.0",
     "linkinator": "^7.2.0",
     "node-fetch": "^3.3.2",
+    "puppeteer": "^24.26.1",
     "tls": "^0.0.1",
     "whois-json": "^2.0.4",
     "whoiser": "^2.0.0-beta.9"
