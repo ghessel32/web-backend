@@ -22,7 +22,8 @@
     "linkinator": "^7.2.0",
     "node-fetch": "^3.3.2",
     "tls": "^0.0.1",
-    "whois-json": "^2.0.4"
+    "whois-json": "^2.0.4",
+    "whoiser": "^2.0.0-beta.9"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
