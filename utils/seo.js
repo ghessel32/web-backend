@@ -4,23 +4,27 @@ import puppeteer from "puppeteer";
 
 let browser;
 
-async function getBrowser() {
-  if (!browser) {
-    browser = await puppeteer.launch({
-      args: [
-        "--disable-setuid-sandbox",
-        "--no-sandbox",
-        "--single-process",
-        "--no-zygote",
-      ],
-      executablePath:
-        process.env.NODE_ENV === "production"
-          ? process.env.PUPPETEER_EXECUTABLE_PATH
-          : puppeteer.executablePath(),
-    });
-  }
+export async function getBrowser() {
+  if (browser) return browser;
 
-  return browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process",
+      ],
+    });
+    console.log("[SEO] Puppeteer browser launched successfully ✅");
+    return browser;
+  } catch (err) {
+    console.error("[SEO] Failed to launch Puppeteer:", err.message);
+    throw err;
+  }
 }
 
 export async function fetchSEOData(url) {

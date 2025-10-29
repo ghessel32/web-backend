@@ -1,22 +1,32 @@
-# ✅ Use Puppeteer's preconfigured Chrome image
+# ✅ Puppeteer base image (Chromium included)
 FROM ghcr.io/puppeteer/puppeteer:24.26.1
 
-# ✅ Environment setup so Puppeteer uses the preinstalled Chrome
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
+# Switch to root for install
+USER root
+
+# Environment setup
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false \
     NODE_ENV=production
 
-# ✅ Set working directory
 WORKDIR /usr/src/app
 
-# ✅ Copy package files first (for better caching)
+# Copy dependency files
 COPY package*.json ./
 
-# ✅ Install only production deps
-RUN npm ci --only=production
+# Install dependencies (use ci if lockfile exists)
+RUN npm install --omit=dev
 
-# ✅ Copy the rest of the code
+# Copy app files
 COPY . .
 
-# ✅ Start your app (change if your entry file is different)
+# Set ownership back to non-root
+RUN chown -R pptruser:pptruser /usr/src/app
+
+# Switch to safe user
+USER pptruser
+
+# Expose your backend port
+EXPOSE 8000
+
+# Start the server
 CMD ["node", "server.js"]
