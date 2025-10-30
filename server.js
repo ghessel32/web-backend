@@ -13,7 +13,7 @@ import { getSpeedPerformance } from "./utils/speed.js";
 import { checkPageExists } from "./utils/check-page.js";
 import { addOrUpdateWebsite } from "./utils/addWebsite.js";
 import { addOrUpdateUser } from "./utils/addUser.js";
-import { getLeaderboard, getTopWebsites } from "./utils/leaderboard.js";
+import { getLeaderboard } from "./utils/leaderboard.js";
 dotenv.config({ path: "./.env" });
 
 const app = express();
@@ -135,7 +135,7 @@ app.get("/api/leaderboard", async (req, res) => {
 
 app.get("/api/top-websites", async (req, res) => {
   try {
-    const data = await getTopWebsites();
+    const data = await getLeaderboard(1, 3);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
