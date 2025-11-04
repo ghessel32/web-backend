@@ -9,7 +9,7 @@ export async function getLeaderboard(page = 1, limit = 20) {
     .from("web-leader")
     .select("*")
     .order("score", { ascending: false })
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
   return data.slice(start, end + 1);
